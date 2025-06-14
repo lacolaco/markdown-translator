@@ -7,28 +7,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Development
 
 ```bash
-# Run the translation tool
-pnpm dev <input_file> [output_file] [options]
+# Run the translation tool (requires GOOGLE_API_KEY environment variable)
+pnpm dev <input_file> [output_file]
 
 # Example usage
 pnpm dev fixtures/overview.md fixtures/overview_ja.md
-pnpm dev doc.md --debug-chunks
 
-# Type checking
-pnpm run tsc:check
+# Essential development commands
+pnpm run tsc:check    # Type checking
+pnpm test             # Run all tests
+pnpm test:watch       # Watch mode for tests
+pnpm format           # Format code
 
-# Run tests
-pnpm test
-pnpm run test:run
-
-# Code formatting
-pnpm format
-pnpm format:check
+# Run specific test files
+pnpm test translator
+pnpm test retry-utils
 ```
 
 ### Options
 
-- `-d, --debug-chunks`: Display chunk division results only (no translation)
 - `-h, --help`: Show help message
 
 ## Architecture
@@ -39,59 +36,87 @@ This is a **semantic markdown translation tool** that translates technical docum
 
 1. **TranslationWorkflow** (`translation-workflow.ts`)
 
+   - Implements `Agent<TranslationWorkflowInput, TranslationWorkflowOutput>` interface
    - Main orchestrator that coordinates the entire translation process
    - Manages file I/O, debug logging, and workflow sequencing
    - Creates separate LLM instances for Translator (temperature 0.3) and Proofreader (temperature 0.1)
    - Entry point for all translation operations
+   - Provides both Agent interface (`run()`) and file-based interface (`translateMarkdownFile()`)
 
 2. **Translator** (`translator.ts`)
 
-   - Handles LLM-based translation using semantic chunking
-   - Uses `SemanticChunker` to split content intelligently
-   - Implements retry logic for failed translations
-   - Preserves markdown structure and line counts
-   - Accepts LLM dependency injection for testability
+   - Implements `Agent<TranslationInput, string>` interface
+   - Handles LLM-based translation with context from previous chunks
+   - Uses `retryUntilSuccess` utility for retry logic with line count validation
+   - Preserves markdown structure and line counts through `validateLineCount`
+   - Mandatory LLM dependency injection for testability
+   - Pure processing agent with no debug logging dependencies
 
 3. **Proofreader** (`proofreader.ts`)
 
+   - Implements `Agent<ProofreadInput, ProofreadResult>` interface
    - Integrates textlint for Japanese grammar checking
-   - Uses LLM to fix detected textlint errors
-   - Implements iterative correction up to maxRetries
-   - Ensures final output meets Japanese writing standards
-   - Accepts LLM dependency injection for testability
+   - Uses LLM to fix detected textlint errors iteratively
+   - Preserves markdown structure and line counts through `validateLineCount`
+   - Returns detailed error information for remaining issues
+   - Mandatory LLM dependency injection for testability
 
 4. **SemanticChunker** (`semantic-chunker.ts`)
+
    - Pure function-based implementation for intelligent content splitting
    - `chunkMarkdown()`: Splits content on heading boundaries (H1-H3 levels)
    - `getChunkStats()`: Provides detailed chunk statistics and metadata
    - Preserves semantic boundaries and markdown structure completely
 
+5. **Agent Interface** (`agent.ts`)
+
+   - Generic `Agent<In, Out>` interface with single `run(input: In): Promise<Out>` method
+   - Enforces consistent processing patterns across Translator and Proofreader
+   - Input types (`TranslationInput`, `ProofreadInput`) co-located with implementations
+
+6. **Utility Modules**
+   - `retry-utils.ts`: Declarative conditional retry loops with `retryUntilSuccess`
+   - `line-count-validator.ts`: Line count preservation validation and adjustment
+   - `chunk-utils.ts`: Pure functions for chunk processing and pipeline operations
+
 ### Key Design Principles
 
 - **Immutable code style**: Uses `const` exclusively, avoiding `let`
-- **Functional programming**: Core utilities like SemanticChunker use pure functions
-- **Separation of concerns**: Translation, proofreading, and workflow management are distinct
-- **Dependency injection**: LLM instances are injected for improved testability and flexibility
-- **Retry mechanisms**: Both translation and proofreading support configurable retry attempts
-- **Debug logging**: Comprehensive logging via `DebugLogger` for troubleshooting
-- **Type safety**: Shared types in `types.ts` for consistency
+- **Functional programming**: Core utilities use pure functions (SemanticChunker, chunk-utils, retry-utils)
+- **Agent pattern**: Translator and Proofreader implement common `Agent<In, Out>` interface
+- **Mandatory dependency injection**: LLM instances must be provided, no fallback instantiation
+- **Co-located types and prompts**: Input/Output types and prompt templates stored with their respective Agent classes
+- **Conditional retry logic**: Declarative retry patterns with success conditions and error handling
+- **Centralized debug logging**: All debug output handled in TranslationWorkflow, not individual agents
+- **Agent pattern consistency**: All processing components implement the `Agent<In, Out>` interface
 
 ### Data Flow
 
 ```
-TranslationWorkflow
+TranslationWorkflow.create(googleApiKey)
         ↓
    LLM Instances Creation
    ↙                    ↘
 Translator LLM        Proofreader LLM
-(temp: 0.3)          (temp: 0.1)
+(temp: 0.5)          (temp: 0.7)
    ↓                    ↓
-Translator         Proofreader
-    ↓                    ↓
-Input MD → SemanticChunker → Translator → Proofreader → Output MD
-           ↓                    ↓            ↓
-        DebugLogger ←——————— DebugLogger ← DebugLogger
+Translator.create()   Proofreader.create()
+   ↓                    ↓
+Input MD → SemanticChunker → For Each Chunk:
+           ↓                 Translator.run() → Proofreader.run() → joinChunks() → Output MD
+        DebugLogger          ↓                   ↓
+                    validateLineCount()   validateLineCount()
 ```
+
+### Processing Architecture
+
+The system processes documents chunk-by-chunk with translation and proofreading as a paired operation per chunk:
+
+1. **Document Chunking**: `chunkMarkdown()` splits input into semantic boundaries
+2. **Chunk Processing**: Each chunk goes through translation → proofreading sequentially
+3. **Context Preservation**: Previous translations provided as context to maintain consistency
+4. **Error Reporting**: Proofreader returns `ProofreadResult` with remaining textlint errors
+5. **Chunk Assembly**: `joinChunks()` reassembles processed chunks maintaining line counts
 
 ### Environment Setup
 
@@ -99,65 +124,120 @@ Requires `GOOGLE_API_KEY` environment variable for Gemini API access.
 
 ### Dependency Injection
 
-The system supports separate LLM dependency injection for Translator and Proofreader:
+The system enforces mandatory LLM dependency injection with static factory methods:
 
 ```typescript
-// Production usage (uses default Gemini LLMs with different temperatures)
-const workflow = new TranslationWorkflow();
+// Production usage
+const workflow = await TranslationWorkflow.create(process.env.GOOGLE_API_KEY!);
+const result = await workflow.run({
+  content: markdownContent,
+  options: { maxRetries: 3, outputPath: 'output.md' },
+});
 
-// Custom LLM injection for both components
-const translatorLLM = new ChatGoogleGenerativeAI({ temperature: 0.3 });
-const proofreaderLLM = new ChatGoogleGenerativeAI({ temperature: 0.1 });
-const workflow = new TranslationWorkflow({}, translatorLLM, proofreaderLLM);
-
-// Testing with mock LLMs
-const mockTranslatorLLM = new MockLLM();
-const mockProofreaderLLM = new MockLLM();
-const workflow = new TranslationWorkflow(
-  {},
-  mockTranslatorLLM,
-  mockProofreaderLLM
-);
+// Direct agent usage
+const translator = await Translator.create(llm);
+const result = await translator.run({
+  text: 'Hello world',
+  previousTranslations: [],
+  maxRetries: 3,
+});
 ```
 
 ### Debug Output
 
-Debug files are saved to `./tmp/` with timestamped filenames:
+Debug files are saved to `./tmp/` directory:
 
-- `{session}-01-original.md`: Original input
-- `{session}-02-chunks.json`: Semantic chunk analysis
-- `{session}-03-chunk-XXX.md`: Individual chunks
-- `{session}-04-translation-XXX.txt`: Translation comparisons
-- `{session}-06-translated-full.md`: Full translation (pre-proofreading)
-- `{session}-08-final.md`: Final result
+- `01-original.md`: Original input document
+- `04-chunk-XXX-input.md`: Chunk input (original)
+- `04-chunk-XXX-translated.md`: Chunk after translation
+- `04-chunk-XXX-final.md`: Chunk after proofreading (final)
+- `05-translated-full.md`: Full translation (pre-proofreading)
+- `07-final.md`: Final result
 
-### textlint Configuration
+### Configuration
 
-Uses `textlint-rule-preset-ja-technical-writing` with customizations in `.textlintrc.json` for Japanese technical writing standards.
+- **Environment**: Requires `GOOGLE_API_KEY` environment variable
+- **Prompt Templates**: Co-located as constants within Agent classes
+- **textlint**: Uses `textlint-rule-preset-ja-technical-writing` preset
 
-## Coding Rules
+### Error Handling and Logging
 
-### TypeScript Standards
+- **Line Count Validation**: `validateLineCount()` ensures translation preserves document structure
+- **Proofreading Errors**: Remaining textlint errors reported as `ProofreadResult.remainingErrors`
+- **Workflow Logging**: All debug output centralized in TranslationWorkflow, not individual agents
+- **Retry Logic**: `retryUntilSuccess()` provides declarative conditional retry with success predicates
 
-- **Strict type checking**: Always adhere to TypeScript's strict mode configuration
-- **No `any` types**: Use proper type definitions or `unknown` when type is truly unknown
-- **Type imports**: Use `import type` for type-only imports to improve build performance
+## Coding Standards
 
-### Immutability
+- **Immutable code style**: Use `const` exclusively, avoid `let`
+- **Functional programming**: Prefer pure functions and functional patterns
+- **Type safety**: Use `import type` for type-only imports, avoid `any` types
+- **Agent pattern**: All processing components must implement `Agent<In, Out>` interface
 
-- **Prefer `const`**: Use `const` exclusively instead of `let` whenever possible
-- **Functional approaches**: Use functional programming patterns (map, filter, reduce) over imperative loops
-- **Immutable data structures**: Avoid mutating objects/arrays; create new instances instead
+### Agent Interface Implementation
 
-### Documentation
+When implementing the `Agent<In, Out>` interface, follow these guidelines:
 
-- **Function specifications**: Document what each function/method accomplishes, its parameters, and return value
-- **Complex logic**: Add inline comments for non-obvious business logic
-- **Interface documentation**: Document interface properties and their purposes
+#### Type Co-location
 
-### Code Style
+- **MUST**: Input and Output types must be co-located with the Agent implementation
+- **Pattern**: `export interface XxxInput { ... }` and `export interface XxxOutput { ... }` in the same file as the Agent class
+- **Examples**:
+  - `TranslationInput` with `Translator` in `translator.ts`
+  - `ProofreadInput`, `ProofreadResult` with `Proofreader` in `proofreader.ts`
+  - `TranslationWorkflowInput`, `TranslationWorkflowOutput` with `TranslationWorkflow` in `translation-workflow.ts`
 
-- **Single responsibility**: Each function/class should have one clear responsibility
-- **Pure functions**: Prefer functions without side effects when possible
-- **Extract pure logic**: Extract logic that can be pure functions into small, testable functions
-- **Error handling**: Use proper error handling with try-catch and meaningful error messages
+#### Interface Requirements
+
+- **Single method**: Implement only `run(input: In): Promise<Out>`
+- **Pure processing**: The `run()` method should focus on core processing logic
+- **No side effects**: Avoid file I/O, logging, or external dependencies in the `run()` method when possible
+- **Testability**: Design for easy unit testing with dependency injection
+
+#### Implementation Pattern
+
+```typescript
+// Co-located types
+export interface MyAgentInput {
+  data: string;
+  options?: SomeOptions;
+}
+
+export interface MyAgentOutput {
+  result: string;
+  metadata?: any;
+}
+
+// Agent implementation
+export class MyAgent implements Agent<MyAgentInput, MyAgentOutput> {
+  constructor(private dependency: SomeDependency) {}
+
+  static async create(dependency: SomeDependency): Promise<MyAgent> {
+    // Factory method for async initialization
+    return new MyAgent(dependency);
+  }
+
+  async run(input: MyAgentInput): Promise<MyAgentOutput> {
+    // Core processing logic
+    const result = await this.processData(input.data, input.options);
+    return {
+      result,
+      metadata: {
+        /* ... */
+      },
+    };
+  }
+
+  private async processData(
+    data: string,
+    options?: SomeOptions
+  ): Promise<string> {
+    // Implementation details
+  }
+}
+```
+
+#### Guidelines for Existing Code
+
+- **Backward compatibility**: Maintain existing public methods when adding Agent interface
+- **Wrapper methods**: Use Agent `run()` as core implementation, existing methods as wrappers

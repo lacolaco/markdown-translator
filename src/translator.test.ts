@@ -14,15 +14,15 @@ describe('Translation Workflow Line Count Preservation', () => {
   beforeEach(async () => {
     // 環境変数のモック
     process.env.GOOGLE_API_KEY = 'test-key';
-    
+
     // モックLLMインスタンスを作成
     const mockLLM = new ChatGoogleGenerativeAI({
       apiKey: 'test-key',
       model: 'gemini-2.0-flash',
       temperature: 0.3,
     });
-    
-    workflow = await TranslationWorkflow.create({}, mockLLM, mockLLM);
+
+    workflow = await TranslationWorkflow.create('test-key');
     translator = await Translator.create(mockLLM);
   });
 
@@ -184,8 +184,8 @@ Final paragraph.`;
     expect(result2.adjustedText).toBe(translated2 + '\n');
 
     // 末尾改行削除で調整できる場合（LLMが余分な改行を追加した場合）
-    const original3 = '## Best Practices';  // 1行、改行なし
-    const translated3 = '## ベストプラクティス\n';  // 2行、末尾に改行
+    const original3 = '## Best Practices'; // 1行、改行なし
+    const translated3 = '## ベストプラクティス\n'; // 2行、末尾に改行
     const result3 = validateLineCount(original3, translated3);
     expect(result3.isValid).toBe(true);
     expect(result3.adjustedText).toBe('## ベストプラクティス');

@@ -30,10 +30,10 @@ export function joinChunks(chunkContents: string[]): string {
 export async function processChunkPipeline(content: string): Promise<string> {
   // 1. Split into chunks
   const chunks = await chunkMarkdown(content);
-  
+
   // 2. Extract chunk contents (no processing)
   const chunkContents = chunks.map(chunk => chunk.content);
-  
+
   // 3. Rejoin chunks
   return joinChunks(chunkContents);
 }
@@ -83,17 +83,21 @@ export async function analyzeChunks(content: string): Promise<{
 }> {
   const originalLines = content.split('\n').length;
   const chunks = await chunkMarkdown(content);
-  
+
   const chunkAnalysis = chunks.map((chunk, index) => ({
     index: index + 1,
     lines: chunk.content.split('\n').length,
     startLine: chunk.startLine,
     endLine: chunk.endLine,
-    preview: chunk.content.substring(0, 50).replace(/\n/g, '\\n') + 
-             (chunk.content.length > 50 ? '...' : ''),
+    preview:
+      chunk.content.substring(0, 50).replace(/\n/g, '\\n') +
+      (chunk.content.length > 50 ? '...' : ''),
   }));
 
-  const totalChunkLines = chunkAnalysis.reduce((sum, chunk) => sum + chunk.lines, 0);
+  const totalChunkLines = chunkAnalysis.reduce(
+    (sum, chunk) => sum + chunk.lines,
+    0
+  );
 
   return {
     originalLines,

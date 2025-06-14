@@ -1,19 +1,30 @@
-import * as fs from 'fs/promises';
-import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
-import { Translator, type TranslationInput } from './translator';
-import {
-  Proofreader,
-  type ProofreadInput,
-  type ProofreadResult,
-} from './proofreader';
-import { DebugLogger } from './debug-logger';
-import { chunkMarkdown, getChunkStats } from './semantic-chunker';
-import { validateLineCount } from './line-count-validator';
-import { joinChunks } from './chunk-utils';
-import type { TranslationOptions } from './types';
 import type { BaseLanguageModel } from '@langchain/core/language_models/base';
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import type { Agent } from './agent';
+import { joinChunks } from './chunk-utils';
+import { DebugLogger } from './debug-logger';
+import { validateLineCount } from './line-count-validator';
+import { Proofreader, type ProofreadInput } from './proofreader';
+import { chunkMarkdown, getChunkStats } from './semantic-chunker';
+import { Translator, type TranslationInput } from './translator';
+import type { TranslationOptions } from './types';
 
-export class TranslationWorkflow {
+// TranslationWorkflow Agent types
+export interface TranslationWorkflowInput {
+  content: string;
+  options: TranslationOptions;
+}
+
+export interface TranslationWorkflowOutput {
+  translatedContent: string;
+  originalLineCount: number;
+  translatedLineCount: number;
+  isValid: boolean;
+}
+
+export class TranslationWorkflow
+  implements Agent<TranslationWorkflowInput, TranslationWorkflowOutput>
+{
   private translator: Translator;
   private proofreader: Proofreader;
   private debugLogger: DebugLogger;
@@ -31,51 +42,46 @@ export class TranslationWorkflow {
    * @param proofreaderLLM - Optional proofreader LLM instance
    * @returns Promise resolving to TranslationWorkflow instance
    */
-  static async create(
-    _options: TranslationOptions = {},
-    translatorLLM?: BaseLanguageModel,
-    proofreaderLLM?: BaseLanguageModel
-  ): Promise<TranslationWorkflow> {
+  static async create(googleApiKey: string): Promise<TranslationWorkflow> {
     // Translator用LLMインスタンスを生成（翻訳に適した設定）
-    const finalTranslatorLLM =
-      translatorLLM ||
-      new ChatGoogleGenerativeAI({
-        apiKey: process.env.GOOGLE_API_KEY,
-        model: 'gemini-2.0-flash',
-        temperature: 0.3, // 翻訳では適度な創造性を許可
-      });
+    const translatorLLM = new ChatGoogleGenerativeAI({
+      apiKey: googleApiKey,
+      model: 'gemini-2.5-flash-preview-05-20',
+      temperature: 0.5, // 翻訳の一貫性を重視
+    });
 
     // Proofreader用LLMインスタンスを生成（校正に適した設定）
-    const finalProofreaderLLM =
-      proofreaderLLM ||
-      new ChatGoogleGenerativeAI({
-        apiKey: process.env.GOOGLE_API_KEY,
-        model: 'gemini-2.0-flash',
-        temperature: 0.1, // 校正では一貫性を重視
-      });
+    const proofreaderLLM = new ChatGoogleGenerativeAI({
+      apiKey: googleApiKey,
+      model: 'gemini-2.5-flash-preview-05-20',
+      temperature: 0.8, // エラー修正への柔軟性を持たせる
+      cache: false,
+    });
 
     // プロンプトを読み込んでインスタンスを作成
-    const debugLogger = new DebugLogger();
-    const translator = await Translator.create(finalTranslatorLLM, debugLogger);
-    const proofreader = await Proofreader.create(finalProofreaderLLM);
+    const translator = await Translator.create(translatorLLM);
+    const proofreader = await Proofreader.create(proofreaderLLM);
 
     return new TranslationWorkflow(translator, proofreader);
   }
 
-  async translateMarkdownFile(
-    inputPath: string,
-    options: TranslationOptions = {}
-  ): Promise<string> {
-    const maxRetries = options.maxRetries || 3;
-    const outputPath = options.outputPath;
+  async run(
+    input: TranslationWorkflowInput
+  ): Promise<TranslationWorkflowOutput> {
+    const { content, options } = input;
+    return this.translateMarkdownContent(content, options);
+  }
 
-    console.log(`翻訳開始: ${inputPath}`);
+  private async translateMarkdownContent(
+    originalContent: string,
+    options: TranslationOptions
+  ): Promise<TranslationWorkflowOutput> {
+    const maxRetries = options.maxRetries || 3;
+
+    console.log('翻訳開始');
 
     // デバッグロガーの初期化
     await this.debugLogger.initialize();
-
-    // ファイル読み込み
-    const originalContent = await this.readFile(inputPath);
     await this.debugLogger.logOriginalContent(originalContent);
 
     const originalLines = originalContent.split('\n');
@@ -90,9 +96,6 @@ export class TranslationWorkflow {
     console.log(`📊 チャンク統計:`);
     console.log(`  総チャンク数: ${stats.totalChunks}`);
 
-    // チャンク情報をログ出力
-    await this.debugLogger.logSemanticChunks(chunks);
-
     // 2. 各チャンクを順次処理（翻訳→校正）
     const processedChunks: string[] = [];
     const previousTranslations: string[] = [];
@@ -104,15 +107,18 @@ export class TranslationWorkflow {
       );
 
       try {
-        // 翻訳
-        console.log(`  🔄 翻訳中...`);
+        // 入力のデバッグ出力
         await this.debugLogger.logChunkInput(index, chunk.content);
 
+        // 翻訳
+        console.log(`  🔄 翻訳中...`);
         const translatedChunk = await this.translator.run({
           text: chunk.content,
-          previousTranslations,
           maxRetries,
         } satisfies TranslationInput);
+
+        // 翻訳結果のデバッグ出力
+        await this.debugLogger.logChunkTranslated(index, translatedChunk);
 
         // 翻訳の行数チェック結果をログ出力
         const translationValidation = validateLineCount(
@@ -144,6 +150,7 @@ export class TranslationWorkflow {
           console.log(`  ✅ 校正完了`);
         }
 
+        // 最終結果のデバッグ出力
         await this.debugLogger.logChunkOutput(index, proofreadResult.text);
 
         processedChunks.push(proofreadResult.text);
@@ -152,9 +159,10 @@ export class TranslationWorkflow {
         console.log(`  ✅ チャンク ${chunkNumber} 完了`);
       } catch (error) {
         console.error(`  ❌ チャンク ${chunkNumber} でエラー:`, error);
-        // エラーの場合は元のチャンクを使用
-        processedChunks.push(chunk.content);
-        previousTranslations.push(chunk.content);
+        // エラーの場合はワークフローを終了
+        throw new Error(
+          `チャンク ${chunkNumber} の処理中にエラーが発生しました: ${error}`
+        );
       }
     }
 
@@ -175,50 +183,11 @@ export class TranslationWorkflow {
     // 最終結果をデバッグ出力
     await this.debugLogger.logFinalResult(finalValidation.adjustedText);
 
-    // ファイルに保存
-    if (outputPath) {
-      await fs.writeFile(outputPath, finalValidation.adjustedText, 'utf-8');
-      console.log(`\n✅ 翻訳完了: ${outputPath}`);
-      console.log(
-        `最終確認: ${finalValidation.adjustedText.split('\n').length} 行 (元: ${originalLines.length} 行)`
-      );
-    }
-
-    return finalValidation.adjustedText;
-  }
-
-  async debugChunks(inputPath: string): Promise<void> {
-    console.log(`チャンク分割デバッグ: ${inputPath}`);
-
-    const content = await this.readFile(inputPath);
-
-    // チャンク分割の実行
-    const chunks = await chunkMarkdown(content);
-    const stats = getChunkStats(chunks);
-
-    console.log(`\n📊 チャンク統計:`);
-    console.log(`  総チャンク数: ${stats.totalChunks}`);
-    console.log(`  平均文字数: ${stats.averageSize}`);
-    console.log(`  最大チャンク: ${stats.maxSize} 文字`);
-
-    console.log(`\n📝 各チャンクの詳細:`);
-    chunks.forEach((chunk, index) => {
-      console.log(
-        `\n--- チャンク ${index + 1} (${chunk.content.length} 文字) ---`
-      );
-      console.log(
-        chunk.content.substring(0, 200) +
-          (chunk.content.length > 200 ? '...' : '')
-      );
-    });
-  }
-
-  private async readFile(filePath: string): Promise<string> {
-    try {
-      const content = await fs.readFile(filePath, 'utf-8');
-      return content;
-    } catch (error) {
-      throw new Error(`ファイル読み込みエラー: ${error}`);
-    }
+    return {
+      translatedContent: finalValidation.adjustedText,
+      originalLineCount: originalLines.length,
+      translatedLineCount: finalValidation.adjustedText.split('\n').length,
+      isValid: finalValidation.isValid,
+    };
   }
 }

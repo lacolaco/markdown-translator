@@ -41,7 +41,7 @@ export async function getTextlintDiagnostics(
     const fixResult = await linter.fixText(text, 'temp.md');
     const lintResult = await linter.lintText(fixResult.output, 'temp.md');
 
-    const formatter = await loadLinterFormatter({ formatterName: 'stylish' });
+    const formatter = await loadLinterFormatter({ formatterName: 'unix' });
     const formattedMessage = formatter.format([lintResult]);
 
     return {

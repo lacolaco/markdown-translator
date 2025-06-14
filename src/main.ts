@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as fs from 'fs/promises';
 import { parseArgs } from 'node:util';
 import { TranslationWorkflow } from './translation-workflow';
 
@@ -8,13 +9,11 @@ function printUsage() {
   tsx src/main.ts <入力ファイル> [出力ファイル] [オプション]
 
 オプション:
-  -d, --debug-chunks       チャンク分割結果のみを表示（翻訳は実行しない）
   -h, --help               このヘルプを表示
 
 例:
   tsx src/main.ts doc.md
   tsx src/main.ts doc.md doc_ja.md
-  tsx src/main.ts doc.md --debug-chunks
 `);
 }
 
@@ -23,10 +22,6 @@ async function main() {
     const { values, positionals } = parseArgs({
       args: process.argv.slice(2),
       options: {
-        'debug-chunks': {
-          type: 'boolean',
-          default: false,
-        },
         help: {
           type: 'boolean',
           default: false,
@@ -46,7 +41,15 @@ async function main() {
       return;
     }
 
-    const workflow = await TranslationWorkflow.create();
+    // Validate GOOGLE_API_KEY
+    if (!process.env.GOOGLE_API_KEY) {
+      console.error('エラー: 環境変数 GOOGLE_API_KEY が設定されていません');
+      return;
+    }
+
+    const workflow = await TranslationWorkflow.create(
+      process.env.GOOGLE_API_KEY
+    );
     const inputPath = positionals[0];
     const outputPath =
       positionals[1] ||
@@ -58,20 +61,23 @@ async function main() {
         );
       })();
 
-    const debugChunks = values['debug-chunks'] as boolean;
+    // 通常の翻訳モード
+    console.log(`翻訳開始: ${inputPath} -> ${outputPath}`);
 
-    if (debugChunks) {
-      // チャンク分割デバッグモード
-      await workflow.debugChunks(inputPath);
-    } else {
-      // 通常の翻訳モード
-      console.log(`翻訳開始: ${inputPath} -> ${outputPath}`);
-
-      await workflow.translateMarkdownFile(inputPath, {
-        outputPath,
+    const content = await fs.readFile(inputPath, 'utf-8');
+    const result = await workflow.run({
+      content,
+      options: {
         maxRetries: 3,
-      });
-    }
+        outputPath,
+      },
+    });
+
+    await fs.writeFile(outputPath, result.translatedContent, 'utf-8');
+    console.log(`\n✅ 翻訳完了: ${outputPath}`);
+    console.log(
+      `最終確認: ${result.translatedLineCount} 行 (元: ${result.originalLineCount} 行)`
+    );
   };
 
   try {

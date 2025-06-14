@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { 
-  joinChunks, 
-  processChunkPipeline, 
-  validateChunkPipeline, 
-  analyzeChunks 
+import {
+  joinChunks,
+  processChunkPipeline,
+  validateChunkPipeline,
+  analyzeChunks,
 } from './chunk-utils';
 import * as fs from 'fs/promises';
 
@@ -24,17 +24,17 @@ describe('Chunk Utils', () => {
       const chunks = [
         '# First chunk\nContent 1',
         '# Second chunk\nContent 2',
-        '# Third chunk\nContent 3'
+        '# Third chunk\nContent 3',
       ];
       const result = joinChunks(chunks);
-      
+
       // チャンクが正しく結合されることを確認（余分な空行は追加されない）
       expect(result).toContain('Content 1\n# Second chunk');
       expect(result).toContain('Content 2\n# Third chunk');
-      
+
       // 行数の確認
       const resultLines = result.split('\n').length;
-      
+
       // 各チャンクは2行、3つのチャンクで6行
       // join('\n')では '# First chunk\nContent 1\n# Second chunk\nContent 2\n# Third chunk\nContent 3' となる
       expect(resultLines).toBe(6);
@@ -42,11 +42,11 @@ describe('Chunk Utils', () => {
 
     it('should handle chunks that end with newlines', () => {
       const chunks = [
-        '# First chunk\nContent 1\n',  // 末尾に改行あり
-        '# Second chunk\nContent 2'    // 末尾に改行なし
+        '# First chunk\nContent 1\n', // 末尾に改行あり
+        '# Second chunk\nContent 2', // 末尾に改行なし
       ];
       const result = joinChunks(chunks);
-      
+
       // 結果に両方のチャンクが含まれることを確認
       expect(result).toContain('# First chunk');
       expect(result).toContain('# Second chunk');
@@ -57,9 +57,9 @@ describe('Chunk Utils', () => {
     it('should validate matching line counts', () => {
       const original = 'Line 1\nLine 2\nLine 3';
       const processed = 'Modified 1\nModified 2\nModified 3';
-      
+
       const validation = validateChunkPipeline(original, processed);
-      
+
       expect(validation.isValid).toBe(true);
       expect(validation.originalLines).toBe(3);
       expect(validation.processedLines).toBe(3);
@@ -69,9 +69,9 @@ describe('Chunk Utils', () => {
     it('should detect line count differences', () => {
       const original = 'Line 1\nLine 2\nLine 3';
       const processed = 'Modified 1\nModified 2'; // 1行少ない
-      
+
       const validation = validateChunkPipeline(original, processed);
-      
+
       expect(validation.isValid).toBe(false);
       expect(validation.originalLines).toBe(3);
       expect(validation.processedLines).toBe(2);
@@ -80,7 +80,7 @@ describe('Chunk Utils', () => {
 
     it('should handle empty strings', () => {
       const validation = validateChunkPipeline('', '');
-      
+
       expect(validation.isValid).toBe(true);
       expect(validation.originalLines).toBe(1); // 空文字列は1行扱い
       expect(validation.processedLines).toBe(1);
@@ -100,7 +100,7 @@ More content.`;
 
       const result = await processChunkPipeline(markdown);
       const validation = validateChunkPipeline(markdown, result);
-      
+
       expect(validation.isValid).toBe(true);
       expect(result).toContain('# Title');
       expect(result).toContain('## Section');
@@ -110,7 +110,7 @@ More content.`;
       const markdown = '# Single Heading';
       const result = await processChunkPipeline(markdown);
       const validation = validateChunkPipeline(markdown, result);
-      
+
       expect(validation.isValid).toBe(true);
       expect(result).toBe(markdown);
     });
@@ -128,7 +128,7 @@ End of example.`;
 
       const result = await processChunkPipeline(markdown);
       const validation = validateChunkPipeline(markdown, result);
-      
+
       expect(validation.isValid).toBe(true);
       expect(result).toContain('```javascript');
       expect(result).toContain('function test()');
@@ -151,11 +151,11 @@ Subsection content.
 Content for title 2.`;
 
       const analysis = await analyzeChunks(markdown);
-      
+
       expect(analysis.originalLines).toBe(markdown.split('\n').length);
       expect(analysis.chunks.length).toBeGreaterThan(0);
       expect(analysis.totalChunkLines).toBe(analysis.originalLines);
-      
+
       // 各チャンクの詳細をチェック
       analysis.chunks.forEach((chunk, index) => {
         expect(chunk.index).toBe(index + 1);
@@ -169,7 +169,7 @@ Content for title 2.`;
     it('should handle single chunk content', async () => {
       const markdown = 'Simple content without headings.';
       const analysis = await analyzeChunks(markdown);
-      
+
       expect(analysis.originalLines).toBe(1);
       expect(analysis.chunks.length).toBe(1);
       expect(analysis.totalChunkLines).toBe(1);
@@ -177,17 +177,20 @@ Content for title 2.`;
     });
 
     it('should truncate long previews', async () => {
-      const longContent = 'A'.repeat(100) + ' more content that should be truncated';
+      const longContent =
+        'A'.repeat(100) + ' more content that should be truncated';
       const markdown = `# Long Content\n\n${longContent}`;
-      
+
       const analysis = await analyzeChunks(markdown);
-      const chunkWithLongContent = analysis.chunks.find(c => 
+      const chunkWithLongContent = analysis.chunks.find(c =>
         c.preview.includes('AAAAAAAAAA')
       );
-      
+
       expect(chunkWithLongContent).toBeDefined();
       // プレビューが実際に切り詰められていることを確認（元の内容より短い）
-      expect(chunkWithLongContent!.preview.length).toBeLessThan(longContent.length);
+      expect(chunkWithLongContent!.preview.length).toBeLessThan(
+        longContent.length
+      );
       expect(chunkWithLongContent!.preview).toContain('...');
     });
   });
@@ -258,14 +261,20 @@ End of document.`;
 
     it('should preserve line count with real file (overview.md)', async () => {
       // 実際のファイルを使ったテスト
-      const filePath = '/Users/lacolaco/works/langchain-sandbox/fixtures/overview.md';
+      const filePath =
+        '/Users/lacolaco/works/langchain-sandbox/fixtures/overview.md';
 
       const originalContent = await fs.readFile(filePath, 'utf-8');
-      console.log(`Original file has ${originalContent.split('\n').length} lines`);
+      console.log(
+        `Original file has ${originalContent.split('\n').length} lines`
+      );
 
       // 新しいユーティリティ関数を使用
       const processedContent = await processChunkPipeline(originalContent);
-      const validation = validateChunkPipeline(originalContent, processedContent);
+      const validation = validateChunkPipeline(
+        originalContent,
+        processedContent
+      );
 
       console.log(`Processed file has ${validation.processedLines} lines`);
       console.log(`Line count difference: ${validation.difference}`);
@@ -298,7 +307,10 @@ End of document.`;
       // 単一行のテキスト
       const singleLine = '# Single Line';
       const singleProcessed = await processChunkPipeline(singleLine);
-      const singleValidation = validateChunkPipeline(singleLine, singleProcessed);
+      const singleValidation = validateChunkPipeline(
+        singleLine,
+        singleProcessed
+      );
       expect(singleValidation.isValid).toBe(true);
 
       // 見出しがないテキスト
@@ -306,7 +318,10 @@ End of document.`;
 It has no headings.
 Multiple lines but no structure.`;
       const noHeadingProcessed = await processChunkPipeline(noHeadings);
-      const noHeadingValidation = validateChunkPipeline(noHeadings, noHeadingProcessed);
+      const noHeadingValidation = validateChunkPipeline(
+        noHeadings,
+        noHeadingProcessed
+      );
       expect(noHeadingValidation.isValid).toBe(true);
 
       // 末尾が改行で終わるテキスト
@@ -314,7 +329,10 @@ Multiple lines but no structure.`;
 Content here.
 `;
       const newlineProcessed = await processChunkPipeline(endsWithNewline);
-      const newlineValidation = validateChunkPipeline(endsWithNewline, newlineProcessed);
+      const newlineValidation = validateChunkPipeline(
+        endsWithNewline,
+        newlineProcessed
+      );
       expect(newlineValidation.isValid).toBe(true);
     });
 

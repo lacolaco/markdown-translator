@@ -1,6 +1,5 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import type { ChunkInfo } from './types';
 
 export class DebugLogger {
   private tmpDir: string;
@@ -25,52 +24,13 @@ export class DebugLogger {
     await this.writeFile(filePath, content, '元ファイル');
   }
 
-  async logSemanticChunks(chunks: ChunkInfo[]): Promise<void> {
-    const summary = {
-      total_chunks: chunks.length,
-      translatable_chunks: chunks.filter(c => c.needsTranslation).length,
-      total_characters: chunks.reduce((sum, c) => sum + c.content.length, 0),
-      chunks: chunks.map((chunk, index) => ({
-        index: index + 1,
-        start_line: chunk.startLine,
-        end_line: chunk.endLine,
-        char_count: chunk.content.length,
-        needs_translation: chunk.needsTranslation,
-        has_code_blocks: chunk.hasCodeBlocks,
-        preview:
-          chunk.content.substring(0, 100).replace(/\n/g, '\\n') +
-          (chunk.content.length > 100 ? '...' : ''),
-      })),
-    };
-
-    const filePath = path.join(this.tmpDir, '02-chunks.json');
-    await this.writeFile(
-      filePath,
-      JSON.stringify(summary, null, 2),
-      'チャンク分割結果'
-    );
-
-    // Save each chunk content separately
-    for (const [index, chunk] of chunks.entries()) {
-      const chunkFilePath = path.join(
-        this.tmpDir,
-        `03-chunk-${(index + 1).toString().padStart(3, '0')}.md`
-      );
-      await this.writeFile(
-        chunkFilePath,
-        chunk.content,
-        `チャンク${index + 1}`
-      );
-    }
-  }
-
   async logChunkInput(
     chunkIndex: number,
     originalContent: string
   ): Promise<void> {
     const filePath = path.join(
       this.tmpDir,
-      `04-chunk-${(chunkIndex + 1).toString().padStart(3, '0')}-input.md`
+      `02-chunk-${(chunkIndex + 1).toString().padStart(3, '0')}-input.md`
     );
     await this.writeFile(
       filePath,
@@ -79,46 +39,34 @@ export class DebugLogger {
     );
   }
 
-  async logChunkOutput(
+  async logChunkTranslated(
     chunkIndex: number,
     translatedContent: string
   ): Promise<void> {
     const filePath = path.join(
       this.tmpDir,
-      `04-chunk-${(chunkIndex + 1).toString().padStart(3, '0')}-output.md`
+      `02-chunk-${(chunkIndex + 1).toString().padStart(3, '0')}-translated.md`
     );
     await this.writeFile(
       filePath,
       translatedContent,
-      `チャンク${chunkIndex + 1}出力`
+      `チャンク${chunkIndex + 1}翻訳済み`
     );
   }
 
-  async logTranslatedResult(content: string): Promise<void> {
-    const filePath = path.join(this.tmpDir, '05-translated-full.md');
-    await this.writeFile(filePath, content, '翻訳完了（校正前）');
-  }
-
-  async logProofreadResult(
-    beforeText: string,
-    afterText: string,
-    errors: string[]
+  async logChunkOutput(
+    chunkIndex: number,
+    finalContent: string
   ): Promise<void> {
-    const comparison = [
-      '=== 校正前後比較 ===',
-      '',
-      '--- 校正前 ---',
-      beforeText,
-      '',
-      '--- 校正後 ---',
-      afterText,
-      '',
-      '--- 検出されたエラー ---',
-      ...errors,
-    ].join('\n');
-
-    const filePath = path.join(this.tmpDir, '06-proofread.txt');
-    await this.writeFile(filePath, comparison, '校正結果');
+    const filePath = path.join(
+      this.tmpDir,
+      `02-chunk-${(chunkIndex + 1).toString().padStart(3, '0')}-final.md`
+    );
+    await this.writeFile(
+      filePath,
+      finalContent,
+      `チャンク${chunkIndex + 1}最終`
+    );
   }
 
   async logFinalResult(content: string): Promise<void> {

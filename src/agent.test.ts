@@ -12,7 +12,6 @@ class MockAgent implements Agent<string, string> {
   async run(input: string): Promise<string> {
     return this.processFunction(input);
   }
-
 }
 
 describe('Agent Interface', () => {
@@ -26,10 +25,9 @@ describe('Agent Interface', () => {
     expect(mockProcessor).toHaveBeenCalledWith('test input');
   });
 
-
   it('should handle async processing', async () => {
-    const agent = new MockAgent(async (input) => {
-      await new Promise((resolve) => setTimeout(resolve, 10));
+    const agent = new MockAgent(async input => {
+      await new Promise(resolve => setTimeout(resolve, 10));
       return input.split('').reverse().join('');
     });
 
@@ -48,7 +46,6 @@ describe('Agent Interface', () => {
       async run(input: NumberInput): Promise<number> {
         return input.value * input.multiplier;
       }
-
     }
 
     const agent = new NumberAgent();
