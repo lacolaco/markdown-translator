@@ -46,34 +46,31 @@ async function main() {
       return;
     }
 
-    const workflow = new TranslationWorkflow();
+    const workflow = await TranslationWorkflow.create();
     const inputPath = positionals[0];
-    const outputPath = positionals[1] || (() => {
-      const parsedPath = path.parse(inputPath);
-      return path.join(
-        parsedPath.dir,
-        `${parsedPath.name}_ja${parsedPath.ext}`
-      );
-    })();
+    const outputPath =
+      positionals[1] ||
+      (() => {
+        const parsedPath = path.parse(inputPath);
+        return path.join(
+          parsedPath.dir,
+          `${parsedPath.name}_ja${parsedPath.ext}`
+        );
+      })();
 
     const debugChunks = values['debug-chunks'] as boolean;
 
-    try {
-      if (debugChunks) {
-        // チャンク分割デバッグモード
-        await workflow.debugChunks(inputPath);
-      } else {
-        // 通常の翻訳モード
-        console.log(`翻訳開始: ${inputPath} -> ${outputPath}`);
+    if (debugChunks) {
+      // チャンク分割デバッグモード
+      await workflow.debugChunks(inputPath);
+    } else {
+      // 通常の翻訳モード
+      console.log(`翻訳開始: ${inputPath} -> ${outputPath}`);
 
-        await workflow.translateMarkdownFile(inputPath, {
-          outputPath,
-          maxRetries: 3,
-        });
-      }
-    } finally {
-      // クリーンアップ
-      await workflow.cleanup();
+      await workflow.translateMarkdownFile(inputPath, {
+        outputPath,
+        maxRetries: 3,
+      });
     }
   };
 

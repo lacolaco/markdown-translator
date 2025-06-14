@@ -1,0 +1,29 @@
+# Dependencies
+node_modules
+
+# Build outputs
+dist
+build
+*.d.ts
+
+# Cache directories
+.cache
+tmp
+
+# Environment files
+.env*
+
+# Log files
+*.log
+
+# IDE/Editor files
+.vscode
+.idea
+
+# Test outputs
+coverage
+
+# Lock files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml

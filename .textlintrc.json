@@ -6,6 +6,7 @@
       "sentence-length": false,
       "max-comma": false,
       "max-ten": false,
+      "no-exclamation-question-mark": false,
       "no-mix-dearu-desumasu": {
         "preferInList": ""
       }

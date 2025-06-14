@@ -5,9 +5,11 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx --env-file .env src/main.ts",
-    "test": "vitest",
-    "test:run": "vitest run",
-    "tsc:check": "tsc --noEmit"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "tsc:check": "tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,js,json,md}\" \"*.{ts,js,json,md}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,js,json,md}\" \"*.{ts,js,json,md}\""
   },
   "keywords": [],
   "author": "",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.1",
+    "prettier": "^3.5.3",
     "tsx": "^4.20.2",
     "typescript": "^5.8.3",
     "vitest": "^2.1.8"
