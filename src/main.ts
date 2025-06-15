@@ -4,7 +4,7 @@ import { TranslationWorkflow } from './translation-workflow';
 import { DebugFileWriter } from './utils/debug-writer';
 import { Logger } from './utils/logger';
 import { readTextFile, writeTextFile } from './utils/file-io';
-import { createTextlintRunner, lintFile } from './textlint-runner';
+import { createTextlintRunner } from './textlint-runner';
 
 function printUsage() {
   console.log(`
@@ -115,7 +115,6 @@ async function main() {
     const inputPath = positionals[0];
     const outputPath = getOutputFilePath(inputPath, positionals[1]);
 
-    // 通常の翻訳モード
     Logger.info(`翻訳開始: ${inputPath} -> ${outputPath}`);
 
     const content = await readTextFile(inputPath);
@@ -131,7 +130,7 @@ async function main() {
     if (result.hasProofreadErrors) {
       Logger.info('\n🔍 最終校正チェック中...');
       try {
-        const finalDiagnostics = await lintFile(outputPath);
+        const finalDiagnostics = await textlintRunner.lintFile(outputPath);
         if (finalDiagnostics.length > 0) {
           Logger.warning(`最終校正エラー:\n ${finalDiagnostics}`);
         }
