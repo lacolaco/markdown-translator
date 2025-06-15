@@ -1,15 +1,12 @@
-import type { BaseLanguageModel } from '@langchain/core/language_models/base';
-import { StringOutputParser } from '@langchain/core/output_parsers';
 import { PromptTemplate } from '@langchain/core/prompts';
 import type { Agent } from './agent';
-import { retryUntilSuccess } from './retry-utils';
-import { validateLineCount } from './line-count-validator';
-import { getTextlintDiagnostics } from './textlint-service';
+import { type TextlintRunner } from './textlint-runner';
+import { RuunableLanguageModel } from './types';
 
 /**
  * Prompt template for proofreading
  */
-const PROOFREAD_PROMPT_TEMPLATE = `あなたは日本語で書かれた文書の校正専門家です。以下のマークダウンテキストにtextlintによる校正エラーが検出されました。エラーで指摘された表現を修正したテキストを返してください。
+export const PROOFREAD_PROMPT_TEMPLATE = `あなたは日本語で書かれた文書の校正専門家です。以下のマークダウンテキストにtextlintによる校正エラーが検出されました。エラーで指摘された表現を修正したテキストを返してください。
 
 ## 重要な注意事項
 
@@ -25,6 +22,10 @@ const PROOFREAD_PROMPT_TEMPLATE = `あなたは日本語で書かれた文書の
 10. **指摘されたエラーのみを修正してください**
 
 修正されたテキストのみを返してください。他の説明や追加のテキストは含めないでください。テキスト全体をコードブロックとしてラップしないでください。
+
+## Retry Context
+
+{retryContext}
 
 ## Errors to Fix
 
@@ -52,8 +53,10 @@ const PROOFREAD_PROMPT_TEMPLATE = `あなたは日本語で書かれた文書の
 export interface ProofreadInput {
   /** The text to proofread */
   text: string;
-  /** Maximum retry attempts */
-  maxRetries?: number;
+  /** Optional retry reason for context */
+  retryReason?: string;
+  /** Previous failed proofreading attempt for retry context */
+  previousFailedAttempt?: string;
 }
 
 /**
@@ -61,121 +64,82 @@ export interface ProofreadInput {
  */
 export interface ProofreadResult {
   /** The proofread text */
-  text: string;
+  fixedText: string;
   /** Remaining textlint errors, if any */
-  error?: string;
+  remainingErrors?: string;
 }
 
 export class Proofreader implements Agent<ProofreadInput, ProofreadResult> {
-  private llm: BaseLanguageModel;
-  private correctPrompt: PromptTemplate;
-
-  private constructor(llm: BaseLanguageModel, correctPrompt: PromptTemplate) {
-    this.llm = llm;
-    this.correctPrompt = correctPrompt;
-  }
-
-  /**
-   * Creates a new Proofreader instance with prompt template
-   * @param llm - Language model instance (required)
-   * @returns Promise resolving to Proofreader instance
-   */
-  static async create(llm: BaseLanguageModel): Promise<Proofreader> {
-    const correctPrompt = PromptTemplate.fromTemplate(
-      PROOFREAD_PROMPT_TEMPLATE
-    );
-    return new Proofreader(llm, correctPrompt);
-  }
+  constructor(
+    private readonly model: RuunableLanguageModel,
+    private readonly textlintRunner: TextlintRunner
+  ) {}
 
   /**
    * Executes the proofreading agent's main processing task
-   * @param input - Proofreading input containing text and options
-   * @returns Promise resolving to proofread result with text and any remaining errors
+   * @param input - Proofreading input containing text, error message, and context
+   * @returns Promise resolving to proofreading result with corrected text and remaining errors
    */
   async run(input: ProofreadInput): Promise<ProofreadResult> {
-    const { text, maxRetries = 3 } = input;
-    return this.proofread(text, maxRetries);
-  }
+    const { text, retryReason, previousFailedAttempt } = input;
 
-  private async proofread(
-    text: string,
-    maxRetries: number = 3
-  ): Promise<ProofreadResult> {
-    let currentText = text;
+    const diagnostics = await this.textlintRunner.lintText(text);
 
-    const result = await retryUntilSuccess({
-      maxAttempts: maxRetries,
-      attempt: async (retryReason?: string) => {
-        const diagnostics = await getTextlintDiagnostics(currentText);
+    // If no errors are found, return the original text
+    if (diagnostics.messages.length === 0) {
+      return {
+        fixedText: text,
+        remainingErrors: undefined,
+      };
+    }
 
-        if (diagnostics.messages.length === 0) {
-          return {
-            hasErrors: false,
-            result: diagnostics.fixedText,
-            error: null,
-          };
-        }
+    const fixedText = await this.correctTextErrors(
+      text,
+      diagnostics.formattedMessage,
+      retryReason,
+      previousFailedAttempt
+    );
 
-        const correctedText = await this.correctTextWithErrors(
-          diagnostics.fixedText,
-          diagnostics.formattedMessage
-        );
-
-        // Update currentText for next iteration
-        currentText = correctedText;
-
-        return {
-          hasErrors: true,
-          result: correctedText,
-          error: diagnostics.formattedMessage,
-        };
-      },
-      validate: result =>
-        result.hasErrors ? 'textlintエラーが残っています' : true,
-      onMaxAttemptsReached: lastResult => {
-        if (lastResult) {
-          return {
-            hasErrors: false,
-            result: lastResult.result,
-            error: lastResult.error,
-          };
-        }
-        return { hasErrors: false, result: text, error: null };
-      },
-    });
-
+    // Re-run textlint to check if there are any remaining errors
+    const remainingDiagnostics = await this.textlintRunner.lintText(fixedText);
     return {
-      text: result.result,
-      error: result.error || undefined,
+      fixedText,
+      remainingErrors:
+        remainingDiagnostics.messages.length > 0
+          ? remainingDiagnostics.formattedMessage
+          : undefined,
     };
   }
 
-  private async correctTextWithErrors(
+  private async correctTextErrors(
     text: string,
-    message: string
+    errorMessage: string,
+    retryReason?: string,
+    previousFailedAttempt?: string
   ): Promise<string> {
-    if (message === '') {
-      return text;
+    if (errorMessage === '') {
+      return text; // No errors to correct
     }
 
-    const chain = this.correctPrompt
-      .pipe(this.llm)
-      .pipe(new StringOutputParser());
+    let retryContext = '';
+    if (retryReason) {
+      retryContext = `この校正は前回の試行で失敗しました。今回は前回と違うアプローチで修正してください。\n理由: ${retryReason}`;
+
+      if (previousFailedAttempt) {
+        retryContext += `\n\n前回の失敗した修正結果:\n---\n${previousFailedAttempt}\n---\n`;
+      }
+    }
+
+    const chain = PromptTemplate.fromTemplate(PROOFREAD_PROMPT_TEMPLATE).pipe(
+      this.model
+    );
 
     try {
-      const correctedText = (await chain.invoke({
-        message,
+      return await chain.invoke({
+        message: errorMessage,
         content: text,
-      })) as string;
-
-      // 行数チェックと調整
-      const validation = validateLineCount(text, correctedText);
-      if (!validation.isValid) {
-        throw new Error(
-          `行数が一致しません: 元の行数=${text.split('\n').length}, 修正後の行数=${correctedText.split('\n').length}`
-        );
-      }
-      return validation.adjustedText;
+        retryContext,
+      });
     } catch (error) {
       return text;
     }

@@ -1,17 +1,27 @@
 /**
+ * Information about the last attempt result
+ */
+export interface LastAttemptResult<T> {
+  /** Reason for the failure (if any) */
+  failureReason?: string;
+  /** Result from the previous attempt (if any) */
+  previousResult?: T;
+}
+
+/**
  * Options for conditional retry loop
  */
 export interface RetryOptions<T> {
   /** Maximum number of attempts */
   maxAttempts: number;
-  /** Function to execute on each attempt. Receives retry reason for subsequent attempts */
-  attempt: (retryReason?: string) => Promise<T>;
+  /** Function to execute on each attempt. Receives information about the last attempt */
+  attempt: (lastAttemptResult?: LastAttemptResult<T>) => Promise<T>;
   /** Function to check if the result is successful. Returns true for success, string for failure reason */
   validate: (result: T) => true | string;
   /** Function to handle errors (optional) */
   onError?: (error: unknown, attemptNumber: number) => void;
   /** Function called when max attempts reached (optional) */
-  onMaxAttemptsReached?: (lastResult: T | null) => T;
+  onMaxAttemptsReached?: (lastResult: T) => T;
 }
 
 /**
@@ -30,7 +40,15 @@ export async function retryUntilSuccess<T>(
 
   for (let attemptNumber = 1; attemptNumber <= maxAttempts; attemptNumber++) {
     try {
-      const result = await attempt(lastFailureReason);
+      const lastAttemptResult: LastAttemptResult<T> | undefined =
+        attemptNumber === 1
+          ? undefined
+          : {
+              failureReason: lastFailureReason,
+              previousResult: lastResult || undefined,
+            };
+
+      const result = await attempt(lastAttemptResult);
       lastResult = result;
 
       const validationResult = validate(result);

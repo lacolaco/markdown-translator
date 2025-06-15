@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { retryUntilSuccess } from './retry-utils';
+import { retryUntilSuccess } from './retry';
 
 describe('Retry Utils', () => {
   describe('retryUntilSuccess', () => {
@@ -153,8 +153,14 @@ describe('Retry Utils', () => {
       });
 
       expect(attemptFn).toHaveBeenNthCalledWith(1, undefined);
-      expect(attemptFn).toHaveBeenNthCalledWith(2, 'first failure');
-      expect(attemptFn).toHaveBeenNthCalledWith(3, 'second failure');
+      expect(attemptFn).toHaveBeenNthCalledWith(2, {
+        failureReason: 'first failure',
+        previousResult: 'attempt1',
+      });
+      expect(attemptFn).toHaveBeenNthCalledWith(3, {
+        failureReason: 'second failure',
+        previousResult: 'attempt2',
+      });
     });
   });
 });

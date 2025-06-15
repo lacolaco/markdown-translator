@@ -1,3 +1,6 @@
+import { BaseLanguageModelInput } from '@langchain/core/language_models/base';
+import { Runnable } from '@langchain/core/runnables';
+
 export interface ChunkInfo {
   content: string;
   startLine: number;
@@ -28,7 +31,6 @@ export interface LineInfo {
 export interface TranslationOptions {
   maxRetries?: number;
   chunkSize?: number;
-  outputPath?: string;
 }
 
 // LLM configuration
@@ -37,3 +39,5 @@ export interface LLMConfig {
   model?: string;
   temperature?: number;
 }
+
+export type RuunableLanguageModel = Runnable<BaseLanguageModelInput, string>;
