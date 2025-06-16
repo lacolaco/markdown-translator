@@ -1,22 +1,40 @@
 name: Deploy
 
 on:
-  pull_request:
-    types: [opened, synchronize]
-    branches: [main]
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
+  pull-requests: write
   deployments: write
+  issues: write
 
 jobs:
-  deploy:
-    if: startsWith(github.event.pull_request.head.ref, 'release-please-')
+  branch-deploy:
+    if: ${{ github.event.issue.pull_request }}
     runs-on: ubuntu-latest
-    environment: production
+    outputs:
+      continue: ${{ steps.branch-deploy.outputs.continue }}
+      ref: ${{ steps.branch-deploy.outputs.ref }}
     steps:
-      - name: Checkout code
+      - name: Branch Deploy
+        id: branch-deploy
+        uses: github/branch-deploy@v9.5.0
+        with:
+          trigger: '.deploy'
+          environment: 'production'
+          skip_ci: 'false'
+
+  publish:
+    needs: branch-deploy
+    if: needs.branch-deploy.outputs.continue == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.branch-deploy.outputs.ref }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
