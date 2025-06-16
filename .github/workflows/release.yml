@@ -34,13 +34,13 @@ jobs:
           ref: ${{ steps.branch-deploy.outputs.sha }}
 
       - name: Setup pnpm
-        if: ${{ steps.branch-deploy.outputs.continue == 'true' && steps.branch-deploy.outputs.noop == 'true' }}
+        if: ${{ steps.branch-deploy.outputs.continue == 'true' }}
         uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4.1.0
         with:
           run_install: false
 
       - name: Setup Node.js
-        if: ${{ steps.branch-deploy.outputs.continue == 'true' && steps.branch-deploy.outputs.noop == 'true' }}
+        if: ${{ steps.branch-deploy.outputs.continue == 'true' }}
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: '.node-version'
@@ -49,15 +49,15 @@ jobs:
           scope: '@lacolaco'
 
       - name: Install dependencies
-        if: ${{ steps.branch-deploy.outputs.continue == 'true' && steps.branch-deploy.outputs.noop == 'true' }}
+        if: ${{ steps.branch-deploy.outputs.continue == 'true' }}
         run: pnpm install --frozen-lockfile
 
       - name: Build project
-        if: ${{ steps.branch-deploy.outputs.continue == 'true' && steps.branch-deploy.outputs.noop == 'true' }}
+        if: ${{ steps.branch-deploy.outputs.continue == 'true' }}
         run: pnpm run build
 
       - name: Publish to npm
-        if: ${{ steps.branch-deploy.outputs.continue == 'true' && steps.branch-deploy.outputs.noop == 'true' }}
+        if: ${{ steps.branch-deploy.outputs.continue == 'true' && steps.branch-deploy.outputs.noop != 'true' }}
         run: pnpm publish --no-git-checks --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
