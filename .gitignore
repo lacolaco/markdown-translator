@@ -3,3 +3,4 @@ node_modules
 tmp
 .claude
 fixtures/*_ja.md
+dist

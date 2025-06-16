@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import * as path from 'path';
 import { parseArgs } from 'node:util';
 import { TranslationWorkflow } from './translation-workflow';
