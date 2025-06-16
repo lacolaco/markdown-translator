@@ -1,11 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import * as fs from 'node:fs/promises';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
 import {
+  analyzeChunks,
   joinChunks,
   processChunkPipeline,
   validateChunkPipeline,
-  analyzeChunks,
 } from './semantic-chunker';
-import * as fs from 'fs/promises';
 
 describe('Chunk Utils', () => {
   describe('joinChunks', () => {
@@ -261,8 +262,7 @@ End of document.`;
 
     it('should preserve line count with real file (overview.md)', async () => {
       // 実際のファイルを使ったテスト
-      const filePath =
-        '/Users/lacolaco/works/langchain-sandbox/fixtures/overview.md';
+      const filePath = path.resolve(__dirname, '..', 'fixtures', 'overview.md');
 
       const originalContent = await fs.readFile(filePath, 'utf-8');
       console.log(
