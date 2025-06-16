@@ -43,6 +43,7 @@ npx @lacolaco/mdtranslator input.md output.md
 ## Setup
 
 1. Set your Google API key as an environment variable:
+
    ```bash
    export GOOGLE_API_KEY=your_api_key_here
    ```

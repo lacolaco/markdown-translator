@@ -21,7 +21,13 @@
     "format": "prettier --write \"src/**/*.{ts,js,json,md}\" \"*.{ts,js,json,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,js,json,md}\" \"*.{ts,js,json,md}\""
   },
-  "keywords": ["markdown", "translation", "llm", "japanese", "textlint"],
+  "keywords": [
+    "markdown",
+    "translation",
+    "llm",
+    "japanese",
+    "textlint"
+  ],
   "author": "lacolaco",
   "license": "MIT",
   "packageManager": "pnpm@10.8.1",

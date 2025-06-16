@@ -19,25 +19,25 @@ describe('Translator', () => {
 
   it('should accept text input and return string output', async () => {
     const inputText = 'Test text';
-    
+
     const result = await translator.run({ text: inputText });
-    
+
     expect(typeof result).toBe('string');
     expect(result).toBeDefined();
   });
 
   it('should handle empty text input', async () => {
     const result = await translator.run({ text: '' });
-    
+
     expect(typeof result).toBe('string');
     expect(result).toBeDefined();
   });
 
   it('should handle multiline text input', async () => {
     const multilineText = 'Line 1\nLine 2\nLine 3';
-    
+
     const result = await translator.run({ text: multilineText });
-    
+
     expect(typeof result).toBe('string');
     expect(result).toBeDefined();
   });
@@ -49,7 +49,7 @@ describe('Translator', () => {
     };
 
     const result = await translator.run(input);
-    
+
     expect(typeof result).toBe('string');
     expect(result).toBeDefined();
   });
@@ -58,7 +58,7 @@ describe('Translator', () => {
     const input = { text: 'Simple text' };
 
     const result = await translator.run(input);
-    
+
     expect(typeof result).toBe('string');
     expect(result).toBeDefined();
   });
@@ -93,8 +93,11 @@ describe('Translator', () => {
     const additionalInstructions = 'Use formal language';
 
     const mockRunnable = createMockRunnableLLM();
-    const customTranslator = new Translator(mockRunnable, additionalInstructions);
-    
+    const customTranslator = new Translator(
+      mockRunnable,
+      additionalInstructions
+    );
+
     const result = await customTranslator.run({ text: inputText });
 
     expect(typeof result).toBe('string');

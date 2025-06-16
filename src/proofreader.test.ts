@@ -29,7 +29,7 @@ describe('Proofreader', () => {
         formattedMessage: '',
       });
       const proofreader = new Proofreader(mockLLM, mockTextlintRunner);
-      
+
       expect(proofreader).toBeInstanceOf(Proofreader);
     });
   });
@@ -58,10 +58,11 @@ describe('Proofreader', () => {
     it('should process text with LLM when textlint errors are found', async () => {
       const inputText = '# Text with Error\n\nThis text have errors.';
       const mockLLM = createMockRunnableLLM();
-      
+
       // First call: has errors, Second call: no errors
       const mockTextlintRunner = {
-        lintText: vi.fn()
+        lintText: vi
+          .fn()
           .mockResolvedValueOnce({
             fixedText: inputText,
             messages: [
@@ -92,17 +93,19 @@ describe('Proofreader', () => {
       expect(mockTextlintRunner.lintText).toHaveBeenCalledTimes(2);
       expect(mockTextlintRunner.lintText).toHaveBeenNthCalledWith(1, inputText);
       expect(result.remainingErrors).toBeUndefined();
-      
+
       // LLM was invoked to process the text with errors
     });
 
     it('should include remaining errors when LLM cannot fix all issues', async () => {
-      const inputText = '# Text with Multiple Errors\n\nThis text have many errors and problems.';
+      const inputText =
+        '# Text with Multiple Errors\n\nThis text have many errors and problems.';
       const mockLLM = createMockRunnableLLM();
-      
+
       // First call: has errors, Second call: still has some errors
       const mockTextlintRunner = {
-        lintText: vi.fn()
+        lintText: vi
+          .fn()
           .mockResolvedValueOnce({
             fixedText: inputText,
             messages: [
@@ -121,7 +124,8 @@ describe('Proofreader', () => {
                 ruleId: 'redundancy-check',
               },
             ],
-            formattedMessage: 'Line 3: Subject-verb disagreement\nLine 3: Redundant phrase',
+            formattedMessage:
+              'Line 3: Subject-verb disagreement\nLine 3: Redundant phrase',
           })
           .mockResolvedValueOnce({
             fixedText: 'partially fixed text',
@@ -151,11 +155,13 @@ describe('Proofreader', () => {
     it('should include retry context when provided', async () => {
       const inputText = '# Text with Error\n\nThis text have errors.';
       const retryReason = 'Previous attempt failed validation';
-      const previousFailedAttempt = '# Text with Error\n\nThis text had errors.';
-      
+      const previousFailedAttempt =
+        '# Text with Error\n\nThis text had errors.';
+
       const mockLLM = createMockRunnableLLM();
       const mockTextlintRunner = {
-        lintText: vi.fn()
+        lintText: vi
+          .fn()
           .mockResolvedValueOnce({
             fixedText: inputText,
             messages: [
@@ -188,16 +194,17 @@ describe('Proofreader', () => {
 
       expect(mockTextlintRunner.lintText).toHaveBeenCalledTimes(2);
       expect(result.remainingErrors).toBeUndefined();
-      
+
       // LLM processing was completed
     });
 
     it('should handle empty retry context when no retry information provided', async () => {
       const inputText = '# Text with Error\n\nThis text have errors.';
-      
+
       const mockLLM = createMockRunnableLLM();
       const mockTextlintRunner = {
-        lintText: vi.fn()
+        lintText: vi
+          .fn()
           .mockResolvedValueOnce({
             fixedText: inputText,
             messages: [
@@ -226,16 +233,17 @@ describe('Proofreader', () => {
 
       expect(mockTextlintRunner.lintText).toHaveBeenCalledTimes(2);
       expect(result.remainingErrors).toBeUndefined();
-      
+
       // LLM processing was completed
     });
 
     it('should handle LLM errors gracefully by returning original text', async () => {
       const inputText = '# Text with Error\n\nThis text have errors.';
       const mockLLM = createMockRunnableLLM();
-      
+
       const mockTextlintRunner = {
-        lintText: vi.fn()
+        lintText: vi
+          .fn()
           .mockResolvedValueOnce({
             fixedText: inputText,
             messages: [
